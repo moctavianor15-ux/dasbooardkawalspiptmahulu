@@ -1847,8 +1847,10 @@ async function loadData() {
       mri: r.mri || 0,
       iepk: r.iepk || 0
     }));
-    status.textContent = '✅ Data dimuat';
-    setTimeout(() => { status.textContent = ''; }, 1500);
+        status.textContent = '✅ ' + result.message;
+    // Muat ulang data dari server agar semua perubahan terlihat
+    await loadData();
+    setTimeout(() => { if (status.textContent.startsWith('✅')) status.textContent = ''; }, 2000);
     render();
     updateKpisLocal();
   } catch (e) {
