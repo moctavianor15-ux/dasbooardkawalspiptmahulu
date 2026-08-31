@@ -28,7 +28,6 @@ exports.handler = async (event) => {
 
     // Jika aksi termasuk POST_ACTIONS, gunakan POST ke Apps Script
     if (POST_ACTIONS.includes(action)) {
-      // Kirim sebagai POST dengan body JSON
       const response = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
