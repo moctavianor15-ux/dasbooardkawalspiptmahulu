@@ -2286,7 +2286,15 @@ document.addEventListener('click', function(e) {
 let deleteTargetId = null;
 function openConfirmModal(id) {
   deleteTargetId = id;
-  document.getElementById('confirmMessage').textContent = id === 'all' ? 'Yakin ingin menghapus semua data OPD?' : 'Yakin ingin menghapus OPD ini?';
+  let message = '';
+  if (id === 'all') {
+    message = 'Yakin ingin menghapus SEMUA data OPD?';
+  } else {
+    const row = rows.find(r => r.id === id);
+    const opdName = row ? row.opd : 'OPD ini';
+    message = `Yakin ingin menghapus OPD "${opdName}"?`;
+  }
+  document.getElementById('confirmMessage').textContent = message;
   document.getElementById('confirmPassword').value = '';
   document.getElementById('confirmError').style.display = 'none';
   document.getElementById('confirmModal').classList.add('active');
@@ -2325,16 +2333,18 @@ document.getElementById('togglePassword').addEventListener('click', function() {
       return;
     }
 
-    if (deleteTargetId) {
-      if (deleteTargetId === 'all') {
-        rows = [];
-      } else {
-        rows = rows.filter(r => r.id !== deleteTargetId);
-      }
-      render();
-      await saveData();
+    // Panggil server untuk hapus OPD langsung
+    const result = await callServer('deleteOpd', { opdId: deleteTargetId, year: currentYear });
+    if (result.status === 'error') {
+      errorDiv.textContent = '❌ ' + result.message;
+      errorDiv.style.display = 'block';
+      errorDiv.style.background = '#fee2e2';
+      errorDiv.style.color = '#dc2626';
+      return;
     }
 
+    // Muat ulang data agar konsisten
+    await loadData();
     closeConfirmModal();
   } catch (err) {
     errorDiv.textContent = '❌ Terjadi kesalahan: ' + err.message;
