@@ -1961,20 +1961,8 @@ async function saveData() {
   const year = currentYear;
 
   try {
-    // Hitung perubahan: bandingkan rows dengan originalRows
-    const changedRows = [];
-    rows.forEach((currentRow) => {
-      const originalRow = originalRows.find(r => r.id === currentRow.id);
-      // Jika baris baru atau isinya berbeda dari versi asli, masukkan ke daftar perubahan
-      if (!originalRow || JSON.stringify(currentRow) !== JSON.stringify(originalRow)) {
-        // Tambahkan timestamp agar perubahan terbaru menang di server
-        currentRow.updatedAt = Date.now();
-        changedRows.push(currentRow);
-      }
-    });
-
-    // Kirim hanya baris yang berubah
-    const result = await callServer('saveData', { rows: JSON.stringify(changedRows), year });
+    // Kirim SELURUH rows (bukan hanya changedRows)
+    const result = await callServer('saveData', { rows: JSON.stringify(rows), year });
     if (result.status === 'error') {
       status.textContent = '⚠️ ' + result.message;
       throw new Error(result.message);
@@ -1995,7 +1983,6 @@ async function saveData() {
     }
   }
 }
-
 // ====== RENDER TABEL ======
 function render() {
   const tbody = document.getElementById('tableBody');
