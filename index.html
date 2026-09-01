@@ -1847,8 +1847,8 @@ async function loadData() {
       mri: r.mri || 0,
       iepk: r.iepk || 0
     }));
-    // Simpan salinan data awal untuk deteksi perubahan
-    originalRows = rows.map(r => ({ ...r }));
+    // Simpan salinan data awal untuk deteksi perubahan (DEEP COPY)
+    originalRows = JSON.parse(JSON.stringify(rows));
     
     status.textContent = '✅ Data dimuat';
     setTimeout(() => { status.textContent = ''; }, 1500);
@@ -1943,6 +1943,7 @@ function applyKpis(kpi) {
   setText('kpiIEPKNote', kpi.iepkCount + ' OPD terisi');
 }
 
+// ====== SAVE DATA (DEBOUNCE + QUEUE) ======
 // ====== SAVE DATA (DEBOUNCE + QUEUE) ======
 function debounceSave() {
   clearTimeout(saveTimer);
