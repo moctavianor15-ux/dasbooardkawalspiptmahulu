@@ -1761,6 +1761,7 @@ let isDeletingFile = false;
 let isSaving = false;
 let pendingSave = false;
 let chartInstance = null;
+let originalRows = [];
 
 // ====== PANGGIL SERVER ======
 function callServer(action, params = {}) {
@@ -1777,7 +1778,6 @@ function callServer(action, params = {}) {
       try {
         data = JSON.parse(text);
       } catch (e) {
-        // Jika bukan JSON, lempar error dengan detail
         throw new Error('Server returned non-JSON response: ' + text.substring(0, 100));
       }
       return data;
@@ -1828,9 +1828,6 @@ async function loadYears() {
   }
 }
 
-// Tambahkan variabel global di deklarasi status
-let originalRows = [];
-
 // ====== LOAD DATA ======
 async function loadData() {
   const status = document.getElementById('saveStatus');
@@ -1850,7 +1847,8 @@ async function loadData() {
       mri: r.mri || 0,
       iepk: r.iepk || 0
     }));
-    // Simpan salinan data asli untuk deteksi perubahan
+    
+    // Simpan salinan data awal untuk deteksi perubahan
     originalRows = rows.map(r => ({ ...r }));
     
     status.textContent = '✅ Data dimuat';
@@ -1860,55 +1858,6 @@ async function loadData() {
   } catch (e) {
     status.textContent = '⚠️ ' + e.message;
     console.error(e);
-  }
-}
-
-// ====== SAVE DATA (HANYA KIRIM PERUBAHAN) ======
-function debounceSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveData, 800);
-}
-
-async function saveData() {
-  if (isSaving) {
-    pendingSave = true;
-    return;
-  }
-  isSaving = true;
-  const status = document.getElementById('saveStatus');
-  status.textContent = '⏳ Menyimpan...';
-  const year = currentYear;
-  
-  try {
-    // Hitung perubahan: bandingkan rows dengan originalRows
-    const changedRows = [];
-    rows.forEach((currentRow, index) => {
-      const originalRow = originalRows.find(r => r.id === currentRow.id);
-      if (!originalRow || JSON.stringify(currentRow) !== JSON.stringify(originalRow)) {
-        changedRows.push(currentRow);
-      }
-    });
-    
-    // Kirim hanya baris yang berubah
-    const result = await callServer('saveData', { rows: JSON.stringify(changedRows), year });
-    if (result.status === 'error') {
-      status.textContent = '⚠️ ' + result.message;
-      throw new Error(result.message);
-    }
-    status.textContent = '✅ ' + result.message;
-    
-    // Setelah simpan, muat ulang data dari server agar semua perubahan terlihat
-    await loadData();
-    
-    setTimeout(() => { if (status.textContent.startsWith('✅')) status.textContent = ''; }, 2000);
-  } catch (err) {
-    status.textContent = '⚠️ ' + err.message;
-  } finally {
-    isSaving = false;
-    if (pendingSave) {
-      pendingSave = false;
-      saveData();
-    }
   }
 }
 
@@ -2002,7 +1951,6 @@ function debounceSave() {
 }
 
 async function saveData() {
-  // Jika sedang menyimpan, tandai ada perubahan pending dan tunggu
   if (isSaving) {
     pendingSave = true;
     return;
@@ -2011,22 +1959,36 @@ async function saveData() {
   const status = document.getElementById('saveStatus');
   status.textContent = '⏳ Menyimpan...';
   const year = currentYear;
+
   try {
-    const result = await callServer('saveData', { rows: JSON.stringify(rows), year });
+    // Hitung perubahan: bandingkan rows dengan originalRows
+    const changedRows = [];
+    rows.forEach((currentRow) => {
+      const originalRow = originalRows.find(r => r.id === currentRow.id);
+      // Jika baris baru atau isinya berbeda dari versi asli, masukkan ke daftar perubahan
+      if (!originalRow || JSON.stringify(currentRow) !== JSON.stringify(originalRow)) {
+        // Tambahkan timestamp agar perubahan terbaru menang di server
+        currentRow.updatedAt = Date.now();
+        changedRows.push(currentRow);
+      }
+    });
+
+    // Kirim hanya baris yang berubah
+    const result = await callServer('saveData', { rows: JSON.stringify(changedRows), year });
     if (result.status === 'error') {
       status.textContent = '⚠️ ' + result.message;
       throw new Error(result.message);
     }
     status.textContent = '✅ ' + result.message;
-    updateKpisLocal();
+
     // Setelah simpan, muat ulang data dari server agar semua perubahan terlihat
     await loadData();
+
     setTimeout(() => { if (status.textContent.startsWith('✅')) status.textContent = ''; }, 2000);
   } catch (err) {
     status.textContent = '⚠️ ' + err.message;
   } finally {
     isSaving = false;
-    // Jika ada pending save, jalankan lagi
     if (pendingSave) {
       pendingSave = false;
       saveData();
@@ -2135,7 +2097,6 @@ function showChart(type) {
   let borderColor = [];
   let typeChart = 'bar';
 
-  // Siapkan data berdasarkan jenis
   if (type === 'rataRata') {
     labels = rows.map(r => r.opd);
     data = rows.map(r => parseFloat(r.sa) || 0);
@@ -2180,11 +2141,9 @@ function showChart(type) {
     typeChart = 'line';
   }
 
-  // Tampilkan modal
   document.getElementById('kpiChartTitle').textContent = titles[type] || 'Grafik';
   document.getElementById('kpiChartModal').classList.add('active');
 
-  // Hapus chart lama jika ada
   if (chartInstance) {
     chartInstance.destroy();
   }
@@ -2353,7 +2312,6 @@ document.getElementById('togglePassword').addEventListener('click', function() {
   const errorDiv = document.getElementById('confirmError');
   const btnOk = this;
 
-  // Nonaktifkan tombol saat proses
   btnOk.disabled = true;
   btnOk.textContent = '⏳ Menghapus...';
 
@@ -2377,7 +2335,6 @@ document.getElementById('togglePassword').addEventListener('click', function() {
       await saveData();
     }
 
-    // Tutup modal setelah berhasil
     closeConfirmModal();
   } catch (err) {
     errorDiv.textContent = '❌ Terjadi kesalahan: ' + err.message;
@@ -2385,7 +2342,6 @@ document.getElementById('togglePassword').addEventListener('click', function() {
     errorDiv.style.background = '#fee2e2';
     errorDiv.style.color = '#dc2626';
   } finally {
-    // Kembalikan tombol ke keadaan semula
     btnOk.disabled = false;
     btnOk.textContent = 'Ya, Hapus';
   }
@@ -2409,7 +2365,6 @@ async function openEditModal(id) {
   const container = document.getElementById('subunsurContainer');
   container.innerHTML = '';
 
-  // **SORT SUB UNSUR** secara numerik
   const sortedSubs = Object.keys(SUBUNSUR_DATA).sort((a,b) => parseFloat(a) - parseFloat(b));
 
   sortedSubs.forEach(subCode => {
@@ -2418,7 +2373,6 @@ async function openEditModal(id) {
     subDiv.className = 'sub-item';
     subDiv.innerHTML = `<label>${subInfo.label}</label>`;
     
-    // **SORT PARAMETER** secara numerik berdasarkan id (misal 1.1.1, 1.3.1)
     const sortedParams = [...subInfo.params].sort((a,b) => parseFloat(a.id) - parseFloat(b.id));
     
     sortedParams.forEach(param => {
@@ -2452,14 +2406,12 @@ async function openEditModal(id) {
   });
 
   document.getElementById('editModal').classList.add('active');
-  // Render daftar file yang sudah ada
   sortedSubs.forEach(subCode => {
     SUBUNSUR_DATA[subCode].params.forEach(param => {
       for (let lv = 1; lv <= 5; lv++) renderFileList(row, subCode, param.id, lv);
     });
   });
 
-  // Pasang event upload dengan progress inline
   container.querySelectorAll('input[type="file"]').forEach(input => {
     input.onchange = async (e) => {
       const fileInput = e.target;
@@ -2471,7 +2423,6 @@ async function openEditModal(id) {
       const fileList = Array.from(fileInput.files);
       if (fileList.length === 0) return;
 
-      // Validasi total ukuran (maks 10 MB per batch)
 const totalSize = fileList.reduce((sum, f) => sum + f.size, 0);
 if (totalSize > 10 * 1024 * 1024) {
   showWarning('Total ukuran file melebihi 10 MB! Silakan pilih lebih sedikit.');
@@ -2489,7 +2440,6 @@ if (totalSize > 10 * 1024 * 1024) {
           showWarning(`File ${file.name} melebihi 20 MB! File dilewati.`);
           continue;
         }
-        // Buat item progress
         const progressItem = document.createElement('div');
         progressItem.className = 'progress-item';
         progressItem.innerHTML = `
@@ -2501,7 +2451,6 @@ if (totalSize > 10 * 1024 * 1024) {
         const fill = progressItem.querySelector('.progress-bar-fill');
         const text = progressItem.querySelector('.progress-text');
 
-        // Simulasi progress
         let progress = 0;
         const interval = setInterval(() => {
           progress = Math.min(100, progress + Math.random() * 15 + 5);
@@ -2514,16 +2463,13 @@ if (totalSize > 10 * 1024 * 1024) {
 
         try {
           const result = await uploadFile(targetRow, subCode, paramId, level, file);
-          // Set progress ke 100% dan selesai
           clearInterval(interval);
           fill.style.width = '100%';
           text.textContent = '100%';
-          // Tambahkan file ke daftar
           if (!targetRow.subunsurs[subCode][paramId]['files' + level]) targetRow.subunsurs[subCode][paramId]['files' + level] = [];
           targetRow.subunsurs[subCode][paramId]['files' + level].push({ url: result, name: file.name });
           renderFileList(targetRow, subCode, paramId, level);
           completed++;
-          // Hapus item progress setelah 1 detik
           setTimeout(() => {
             progressItem.remove();
             if (progressContainer.children.length === 0) progressContainer.classList.remove('active');
@@ -2540,7 +2486,6 @@ if (totalSize > 10 * 1024 * 1024) {
   });
 }
 
-// ====== UPLOAD FILE (TIDAK ADA OVERLAY TENGAH) ======
 // ====== UPLOAD FILE (BATAS 10 MB) ======
 async function uploadFile(row, subCode, paramId, level, file) {
   if (!file) return;
@@ -2612,7 +2557,7 @@ function removeUploadedFile(opdId, subCode, paramId, level, fileUrl) {
 }
 
 document.getElementById('fileDeleteOk').addEventListener('click', async function() {
-  if (isDeletingFile) return; // Mencegah double click
+  if (isDeletingFile) return;
   if (!fileToDelete) return;
   
   isDeletingFile = true;
@@ -2786,7 +2731,7 @@ document.getElementById('confirmBackupCancel').addEventListener('click', functio
 
 document.getElementById('confirmBackupOk').addEventListener('click', async function() {
   document.getElementById('confirmBackupModal').classList.remove('active');
-  if (isCreatingBackup) return; // Mencegah double click
+  if (isCreatingBackup) return;
   isCreatingBackup = true;
   const btnOk = this;
   btnOk.disabled = true;
@@ -2858,7 +2803,7 @@ document.getElementById('confirmRestoreCancel').addEventListener('click', functi
 
 document.getElementById('confirmRestoreOk').addEventListener('click', async function() {
   if (!backupToRestore) return;
-  if (isRestoringBackup) return; // Mencegah double click
+  if (isRestoringBackup) return;
   isRestoringBackup = true;
   const btnOk = this;
   btnOk.disabled = true;
